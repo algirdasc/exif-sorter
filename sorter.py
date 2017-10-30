@@ -9,7 +9,7 @@ import locale
 import shutil
 import hashlib
 import sys
-
+from jpegtran import JPEGImage
 
 class ExifSorter(object):
 
@@ -19,6 +19,7 @@ class ExifSorter(object):
         config.readfp(open('sorter.ini'))
 
         self.config = config
+        self.checksums = {}
 
         print "Setting locale {0}".format(self.config.get('options', 'locale'))
         try:
@@ -34,10 +35,17 @@ class ExifSorter(object):
 
             for image in images:
                 filename = os.path.join(root, image)
+
+                if not os.path.exists(filename):
+                    images.remove(image)
+                    continue
+
                 print "\tParsing file {0}".format(filename)
 
                 data = self.parse_exif(filename)
+
                 if not data:
+                    print "\t\tNo EXIF data, skiping"
                     continue
 
                 if self.config.getboolean('options', 'remove_duplicates'):
@@ -65,14 +73,14 @@ class ExifSorter(object):
         if not exif:
             return None
 
-        if not exif['Image DateTime']:
-            return None
+        if 'Image DateTime' not in exif:
+            exif['Image DateTime'] = datetime.datetime.fromtimestamp(os.stat(filename).st_mtime).strftime('%Y:%m:%d %H:%M:%S')
 
         dt = datetime.datetime.strptime(str(exif['Image DateTime']), '%Y:%m:%d %H:%M:%S')
         data = {
             'year': dt.strftime('%Y'),
             'month': dt.strftime('%m'),
-            'literal_month': dt.strftime('%B').title(),
+            'literal_month': dt.strftime('%B').capitalize(),
             'day': dt.strftime('%d'),
             'hour': dt.strftime('%H'),
             'minute': dt.strftime('%M'),
@@ -94,23 +102,28 @@ class ExifSorter(object):
         return os.path.join(self.config.get('path', 'destination'), fformat)
 
     def move_duplicates(self, filename, images, data):
-        my_hash = self.checksum(filename)
+
+        if filename not in self.checksums:
+            self.checksums[filename] = self.checksum(filename)
+
         for idx, image in enumerate(images):
             image_filename = os.path.join(os.path.dirname(filename), image)
 
             if filename == image_filename or not os.path.exists(image_filename):
                 continue
 
-            image_hash = self.checksum(image_filename)
+            if image_filename not in self.checksums:
+                self.checksums[image_filename] = self.checksum(image_filename)
 
-            if image_hash == my_hash:
+            if self.checksums[image_filename] == self.checksums[filename]:
                 destination_dir = os.path.join(os.path.dirname(self.create_destination(data)), '_duplicates')
                 if not os.path.exists(destination_dir):
                     os.makedirs(destination_dir)
                 shutil.move(image_filename, destination_dir)
             else:
-                sys.stdout.write("\r\t\t{0} / {1}".format(idx, len(images)))
+                sys.stdout.write("\r\t\t\t{0} / {1}".format(idx + 1, len(images)))
                 sys.stdout.flush()
+        print
 
     def checksum(self, filename):
         hash_sha = hashlib.md5()
@@ -130,28 +143,11 @@ class ExifSorter(object):
         shutil.move(filename, self.create_destination(data))
 
     def rotate_image(self, filename, data):
-        from PIL import Image, ExifTags
+        img = JPEGImage(filename)
         try:
-            image = Image.open(filename)
-            for orientation in ExifTags.TAGS.keys():
-                if ExifTags.TAGS[orientation] == 'Orientation':
-                    break
-
-            exif = dict(image._getexif().items())
-
-            if exif[orientation] == 3:
-                image = image.rotate(180, expand=True)
-            elif exif[orientation] == 6:
-                image = image.rotate(270, expand=True)
-            elif exif[orientation] == 8:
-                image = image.rotate(90, expand=True)
-
-            image.save(filename)
-            image.close()
-
-        except (AttributeError, KeyError, IndexError):
+            img.exif_autotransform().save(filename)
+        except:
             pass
-
 
 if __name__ == '__main__':
     ExifSorter()
