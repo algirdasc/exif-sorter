@@ -60,6 +60,8 @@ class ExifSorter(object):
                     print "\t\tMoving image"
                     self.move_image(filename, data)
 
+                images.remove(image)
+
     def check_paths(self):
         if not os.path.exists(self.config.get('path', 'source')):
             raise Exception('Source path "{0}" does not exists'.format(self.config.get('path', 'source')))

@@ -7,6 +7,7 @@ This small python script reads JPEG image EXIF data, auto corrects orientation, 
 
 Install
 -
-> - sudo apt-get install libjpeg-dev
+> - sudo apt-get install libjpeg-dev python-exif python
 > - sudo pip install exifread
+> - sudo pip install cffi
 > - sudo pip install jpegtran-cffi
